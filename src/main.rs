@@ -1,6 +1,7 @@
 use asfalt_inator::AsfaltInator;
 use cargo_commandos_lucky::lucky_function::lucky_spin;
 use op_map::op_pathfinding;
+use ragnarok::GuiRunner;
 use rip_worldgenerator::MyWorldGen;
 use robotics_lib::{
     energy::Energy,
@@ -16,11 +17,12 @@ use robotics_lib::{
     },
 };
 use searchtool_unwrap::SearchTool;
-use sense_and_find_by_rustafariani::*;
-use std::{borrow::Borrow, collections::HashMap, process::exit};
+use sense_and_find_by_rustafariani::Lssf;
+use std::{borrow::{Borrow, BorrowMut}, collections::HashMap, process::exit};
 
 struct MyRobot {
     robot: Robot,
+    ticks: i32,
 }
 
 impl Runnable for MyRobot {
@@ -31,29 +33,17 @@ impl Runnable for MyRobot {
         }
     }
 
-    fn get_energy(&self) -> &Energy {
-        &self.robot.energy
-    }
+    fn get_energy(&self) -> &Energy { &self.robot.energy }
 
-    fn get_energy_mut(&mut self) -> &mut Energy {
-        &mut self.robot.energy
-    }
+    fn get_energy_mut(&mut self) -> &mut Energy { &mut self.robot.energy}
 
-    fn get_coordinate(&self) -> &Coordinate {
-        &self.robot.coordinate
-    }
+    fn get_coordinate(&self) -> &Coordinate { &self.robot.coordinate }
 
-    fn get_coordinate_mut(&mut self) -> &mut Coordinate {
-        &mut self.robot.coordinate
-    }
+    fn get_coordinate_mut(&mut self) -> &mut Coordinate { &mut self.robot.coordinate }
 
-    fn get_backpack(&self) -> &BackPack {
-        &self.robot.backpack
-    }
+    fn get_backpack(&self) -> &BackPack { &self.robot.backpack }
 
-    fn get_backpack_mut(&mut self) -> &mut BackPack {
-        &mut self.robot.backpack
-    }
+    fn get_backpack_mut(&mut self) -> &mut BackPack { &mut self.robot.backpack }
 
     fn process_tick(&mut self, world: &mut robotics_lib::world::World) {
         println!("tick {:?}", self.get_energy().get_energy_level());
@@ -62,21 +52,26 @@ impl Runnable for MyRobot {
             self.robot.backpack.get_contents().clone(),
             robot_map(world).unwrap(),
             look_at_sky(world),
+            self.ticks,
         );
-        let action = variables.interpreter();
-        
-    }
-}
-
-pub fn start(run: Result<Runner, LibError>) {
-    match run {
-        Ok(mut r) => {
-            let _ = r.game_tick();
+        let actions = variables.interpreter();
+        if actions.is_some() {
+            for action in actions.unwrap() {
+                match action {
+                    Action::Discover => {
+                        let mut lssf = Lssf::new();
+                        let res: Result<Vec<Vec<((usize, usize), Tile, bool)>>, LibError> = lssf.sense_raw_centered_square(70, world, self, 4);
+                    }
+                    Action::AsfaltInator => {}
+                    Action::Explore => {}
+                    Action::GetResources => {}
+                    Action::GoToMarket => {}
+                    Action::TryEnergyReplenish => {}
+                    Action::Wait => {}
+                }
+            }
         }
-        Err(e) => {
-            println!("{:?}", e);
-            exit(1)
-        }
+        println!("energy: {:?}", self.get_energy().get_energy_level());
     }
 }
 
@@ -94,6 +89,7 @@ pub struct Variables {
     inventory: HashMap<Content, usize>,
     map: Vec<Vec<Option<Tile>>>,
     e: EnvironmentalConditions,
+    ticks: i32,
 }
 
 impl Variables {
@@ -102,17 +98,22 @@ impl Variables {
         inventory: HashMap<Content, usize>,
         map: Vec<Vec<Option<Tile>>>,
         e: EnvironmentalConditions,
+        ticks: i32,
     ) -> Self {
         Self {
             energy_lv,
             inventory,
             map,
             e,
+            ticks,
         }
     }
     fn update() {}
     fn interpreter(&self) -> Option<Vec<Action>> {
         let mut actions: Vec<Action> = Vec::new();
+        if self.ticks == 0 {
+            actions.push(Action::Discover);
+        }
         if self.energy_lv < 50 {
             actions.push(Action::Wait);
         } else {
@@ -123,14 +124,18 @@ impl Variables {
     }
 }
 
+
+
 fn main() {
     let mut generator = MyWorldGen::new();
     let mut robot = MyRobot {
         robot: Robot::new(),
+        ticks: 0,
     };
-    let mut run = Runner::new(Box::new(robot), &mut generator);
 
-    start(run)
+    let gui_runner = GuiRunner::new(Box::new(robot), &mut generator).unwrap();
+
+    gui_runner.run().unwrap();
 }
 /*To do
     Capire cosa implicano le condizioni atmosferiche

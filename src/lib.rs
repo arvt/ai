@@ -123,10 +123,10 @@ impl MyRobot {
     pub fn get_direction_to_move_towards(&mut self, world: &mut World, l: usize, granularity: usize) -> (Direction, usize) {
         let mut lssf = Lssf::new();
         let robot_coord = (self.robot.coordinate.get_row(), self.robot.coordinate.get_col());
-        let top_left = (max(robot_coord.0 - 20, 0), max(robot_coord.1 - 20, 0));
-        let top_right = (max(robot_coord.0, 0), max(robot_coord.1 - 20, 0));
+        let top_left = (max(robot_coord.0 as i32 - 20, 0) as usize, max(robot_coord.1 as i32 - 20, 0) as usize);
+        let top_right = (max(robot_coord.0, 0), max(robot_coord.1 as i32 - 20, 0) as usize);
         let bottom_right = (max(robot_coord.0 , 0), max(robot_coord.1, 0));
-        let bottom_left = (max(robot_coord.0 - 20, 0), max(robot_coord.1, 0));
+        let bottom_left = (max(robot_coord.0 as i32 - 20, 0) as usize, max(robot_coord.1, 0));
         let map_top_left = lssf.sense_raw_square_by_corner(l, world, self, granularity, top_left).unwrap();
         let map_top_right = lssf.sense_raw_square_by_corner(l, world, self, granularity, top_right).unwrap();
         let map_bottom_right = lssf.sense_raw_square_by_corner(l, world, self, granularity, bottom_right).unwrap();

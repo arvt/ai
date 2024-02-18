@@ -1,6 +1,6 @@
 use asfalt_inator::AsfaltInator;
 use cargo_commandos_lucky::lucky_function::lucky_spin;
-use olympus::{channel::Channel, *};
+use olympus::channel::Channel;
 //use op_map::op_pathfinding::*;
 use rip_worldgenerator::MyWorldGen;
 use robotics_lib::{
@@ -15,27 +15,18 @@ use robotics_lib::{
     world::{
         coordinates::Coordinate,
         environmental_conditions::{EnvironmentalConditions, WeatherType},
-        tile::{Content, Tile},
+        tile::{Content, Tile, TileType},
         World,
     },
 };
 //use searchtool_unwrap::{SearchDirection, SearchTool};
 use sense_and_find_by_rustafariani::*;
-use std::{borrow::Borrow, cell::RefCell, collections::HashMap, process::exit, rc::Rc};
+use std::{borrow::Borrow, cell::RefCell, cmp::{max, min}, collections::HashMap, process::exit, rc::Rc};
 
 pub struct MyRobot {
     pub robot: Robot,
     pub ticks: i32,
     channel: Rc<RefCell<Channel>>,
-}
-impl MyRobot {
-    pub fn new(channel: Rc<RefCell<Channel>>) -> Self {
-        Self {
-            robot: Robot::new(),
-            ticks: 0,
-            channel,
-        }
-    }
 }
 
 impl Runnable for MyRobot {
@@ -75,6 +66,7 @@ impl Runnable for MyRobot {
 
     fn process_tick(&mut self, world: &mut robotics_lib::world::World) {
         self.channel.borrow_mut().send_game_info(self, world);
+
         println!("tick {:?}", self.get_energy().get_energy_level());
         let variables: Variables = Variables::new(
             self.robot.energy.get_energy_level(),
@@ -88,58 +80,159 @@ impl Runnable for MyRobot {
         for action in complex_actions {
             match action {
                 ComplexAction::Discover => {
+                    println!("disco");
                     let mut lssf = Lssf::new();
                     let res: Result<Vec<Vec<((usize, usize), Tile, bool)>>, LibError> =
-                        lssf.sense_raw_centered_square(40, world, self, 0);
+                        lssf.sense_raw_centered_square(40, world, self, 2);
+                    if res.is_err() { println!("{:?}", res.err())}
                 }
                 ComplexAction::AsfaltInator => {}
                 ComplexAction::Explore => {
-                    let mut lssf = Lssf::new();
-                    let x = lssf.sense_raw_centered_square(40, world, self, 2).unwrap();
-                    let mut c = (0, 0);
-                    for row in x {
-                        for col in row {
-                            match col.1.content {
-                                Content::Tree(_) => {
-                                    c = col.0;
-                                }
-                                _ => {}
-                            }
+                    let l = 20;
+                    let granularity = 2;
+                    let c = self.get_direction_to_move_towards(world, l, 4);
+                    for _ in 0..c.1 {
+                        let res = go(self, world, c.clone().0);
+                        if res.is_err() {
+
                         }
                     }
-                    if c != (0, 0) {
-                        if self.robot.coordinate.get_row() > c.0 {
-                            one_direction_view(
-                                self,
-                                world,
-                                Direction::Left,
-                                self.robot.coordinate.get_row() - c.0,
-                            );
-                        } else if self.robot.coordinate.get_row() < c.0 {
-                            one_direction_view(
-                                self,
-                                world,
-                                Direction::Right,
-                                c.0 - self.robot.coordinate.get_row(),
-                            );
-                        }
-                        if self.robot.coordinate.get_col() > c.1 {
-                            one_direction_view(
-                                self,
-                                world,
-                                Direction::Down,
-                                self.robot.coordinate.get_col() - c.1,
-                            );
-                        } else if self.robot.coordinate.get_col() < c.1 {
-                            one_direction_view(
-                                self,
-                                world,
-                                Direction::Down,
-                                c.1 - self.robot.coordinate.get_col(),
-                            );
-                        }
-                    }
-                    println!("prova smart");
+                }
+                ComplexAction::GetResources => {}
+                ComplexAction::GoToMarket => {}
+                ComplexAction::TryEnergyReplenish => {}
+                ComplexAction::Wait => {
+                    let mut robot = Robot::new();
+                    self.robot.energy = robot.energy;
+                }
+            }
+        }
+        self.ticks += 1;
+        println!("energy: {:?}", self.get_energy().get_energy_level());
+    }
+}
+
+impl MyRobot {
+    pub fn new(channel: Rc<RefCell<Channel>>) -> Self {
+        Self {
+            robot: Robot::new(),
+            ticks: 0,
+            channel,
+        }
+    }
+    pub fn get_direction_to_move_towards(&mut self, world: &mut World, l: usize, granularity: usize) -> (Direction, usize) {
+        let mut lssf = Lssf::new();
+        let robot_coord = (self.robot.coordinate.get_row(), self.robot.coordinate.get_col());
+        let top_left = (max(robot_coord.0 - 20, 0), max(robot_coord.1 - 20, 0));
+        let top_right = (max(robot_coord.0, 0), max(robot_coord.1 - 20, 0));
+        let bottom_right = (max(robot_coord.0 , 0), max(robot_coord.1, 0));
+        let bottom_left = (max(robot_coord.0 - 20, 0), max(robot_coord.1, 0));
+        let map_top_left = lssf.sense_raw_square_by_corner(l, world, self, granularity, top_left).unwrap();
+        let map_top_right = lssf.sense_raw_square_by_corner(l, world, self, granularity, top_right).unwrap();
+        let map_bottom_right = lssf.sense_raw_square_by_corner(l, world, self, granularity, bottom_right).unwrap();
+        let map_bottom_left = lssf.sense_raw_square_by_corner(l, world, self, granularity, bottom_left).unwrap();
+        let likeability_top_left = calculate_likeability(map_top_left);
+        let likeability_top_right = calculate_likeability(map_top_right);
+        let likeability_bottom_right = calculate_likeability(map_bottom_right);
+        let likeability_bottom_left = calculate_likeability(map_bottom_left);
+        let likeability_top = likeability_top_left + likeability_top_right;
+        let likeability_right = likeability_top_right + likeability_bottom_right;
+        let likeability_bottom = likeability_bottom_right + likeability_bottom_left;
+        let likeability_left = likeability_bottom_left + likeability_top_left;
+        let mut max = likeability_top;
+        for like in vec![likeability_top, likeability_right, likeability_bottom, likeability_left] {
+            if like > max { max = like}
+        }
+        match max {
+            likeability_top => ( Direction::Up, robot_coord.1 - top_right.1 ),
+            likeability_right => ( Direction::Right,  top_right.0 - robot_coord.0),
+            likeability_bottom => ( Direction::Down,  bottom_left.1 - robot_coord.1),
+            likeability_left => ( Direction::Left, robot_coord.0 - bottom_left.0 ),
+        }
+    }
+}
+
+pub fn calculate_likeability(map: Vec<Vec<((usize, usize), Tile, bool)>>) -> i32 {
+    let mut likeability: i32 = 0;
+    for row in map.clone() {
+        for col in row {
+            match col.2 {
+                false => likeability += 1,
+                _ => {}
+            }
+            match col.1.tile_type {
+                TileType::DeepWater => likeability -= 10,
+                _ => {}
+            }
+        }
+    }
+    likeability * 100 / (map.len() * map.len()) as i32
+}
+
+pub enum ComplexAction {
+    Discover,
+    Explore,
+    GetResources,
+    GoToMarket,
+    AsfaltInator,
+    TryEnergyReplenish,
+    Wait,
+}
+pub struct Variables {
+    energy_lv: usize,
+    inventory: HashMap<Content, usize>,
+    map: Vec<Vec<Option<Tile>>>,
+    e: EnvironmentalConditions,
+    ticks: i32,
+    city1: Option<(usize, usize)>,
+    city2: Option<(usize, usize)>,
+}
+
+impl Variables {
+    fn new(
+        energy_lv: usize,
+        inventory: HashMap<Content, usize>,
+        map: Vec<Vec<Option<Tile>>>,
+        e: EnvironmentalConditions,
+        ticks: i32,
+    ) -> Self {
+        Self {
+            energy_lv,
+            inventory,
+            map,
+            e,
+            ticks,
+            city1: None,
+            city2: None,
+        }
+    }
+    fn update() {}
+    fn interpreter(&self) -> Vec<ComplexAction> {
+        let mut action: Vec<ComplexAction> = Vec::new();
+        let mut flag = true;
+        let mut cycles = 0;
+        while flag {
+            if self.ticks == 0 && cycles == 0 {
+                action.push(ComplexAction::Discover);
+                flag = false;
+                println!("Discover");
+            } else if self.energy_lv < 500 {
+                action.push(ComplexAction::Wait);
+                flag = false;
+                println!("Wait");
+            } else {
+                action.push(ComplexAction::Explore);
+                flag = false;
+                println!("Explore");
+            }
+            cycles += 1;
+        }
+        action
+    }
+}
+
+/*
+println!("prova smart");
                     let res = lssf.smart_sensing_centered(40, world, self, 2);
                     if res.is_err() {
                         println!("{:?}", res.err());
@@ -185,79 +278,7 @@ impl Runnable for MyRobot {
                             }
                         }
                     }
-                }
-                ComplexAction::GetResources => {}
-                ComplexAction::GoToMarket => {}
-                ComplexAction::TryEnergyReplenish => {}
-                ComplexAction::Wait => {
-                    let mut robot = Robot::new();
-                    self.robot.energy = robot.energy;
-                }
-            }
-        }
-        self.ticks += 1;
-        println!("energy: {:?}", self.get_energy().get_energy_level());
-    }
-}
-pub enum ComplexAction {
-    Discover,
-    Explore,
-    GetResources,
-    GoToMarket,
-    AsfaltInator,
-    TryEnergyReplenish,
-    Wait,
-}
-pub struct Variables {
-    energy_lv: usize,
-    inventory: HashMap<Content, usize>,
-    map: Vec<Vec<Option<Tile>>>,
-    e: EnvironmentalConditions,
-    ticks: i32,
-}
 
-impl Variables {
-    fn new(
-        energy_lv: usize,
-        inventory: HashMap<Content, usize>,
-        map: Vec<Vec<Option<Tile>>>,
-        e: EnvironmentalConditions,
-        ticks: i32,
-    ) -> Self {
-        Self {
-            energy_lv,
-            inventory,
-            map,
-            e,
-            ticks,
-        }
-    }
-    fn update() {}
-    fn interpreter(&self) -> Vec<ComplexAction> {
-        let mut action: Vec<ComplexAction> = Vec::new();
-        let mut flag = true;
-        let mut cycles = 0;
-        while flag {
-            if self.ticks == 0 && cycles == 0 {
-                action.push(ComplexAction::Discover);
-                flag = false;
-                println!("Discover");
-            } else if self.energy_lv < 500 {
-                action.push(ComplexAction::Wait);
-                flag = false;
-                println!("Wait");
-            } else {
-                action.push(ComplexAction::Explore);
-                flag = false;
-                println!("Explore");
-            }
-            cycles += 1;
-        }
-        action
-    }
-}
-
-/*
 fn main() {
     let mut generator = MyWorldGen::new();
     let mut robot = MyRobot {

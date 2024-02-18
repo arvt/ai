@@ -1,4 +1,5 @@
 use ai::*;
+use olympus::{channel::Channel, *};
 use asfalt_inator::AsfaltInator;
 use cargo_commandos_lucky::lucky_function::lucky_spin;
 //use op_map::op_pathfinding::
@@ -20,17 +21,13 @@ use robotics_lib::{
 //use searchtool_unwrap::{SearchDirection, SearchTool};
 use sense_and_find_by_rustafariani::*;
 use std::{
-    borrow::{Borrow, BorrowMut},
-    collections::HashMap,
-    process::exit,
+    borrow::{Borrow, BorrowMut}, cell::RefCell, collections::HashMap, process::exit, rc::Rc
 };
 
 fn main() {
     let mut generator = MyWorldGen::new();
-    let mut robot = MyRobot {
-        robot: Robot::new(),
-        ticks: 0,
-    };
+    let channel = Rc::new(RefCell::new(Channel::default()));
+    let mut robot = MyRobot::new(channel);
 
     let gui_runner = GuiRunner::new(Box::new(robot), &mut generator).unwrap();
 

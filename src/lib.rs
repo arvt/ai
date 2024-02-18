@@ -1,12 +1,15 @@
 use asfalt_inator::AsfaltInator;
 use cargo_commandos_lucky::lucky_function::lucky_spin;
-//use op_map::op_pathfinding::
-use ragnarok::GuiRunner;
+use olympus::{channel::Channel, *};
+//use op_map::op_pathfinding::*;
 use rip_worldgenerator::MyWorldGen;
 use robotics_lib::{
     energy::Energy,
     event::events::Event,
-    interface::{go, look_at_sky, one_direction_view, put, robot_map, robot_view, teleport, where_am_i, Direction, Tools},
+    interface::{
+        go, look_at_sky, one_direction_view, put, robot_map, robot_view, teleport, where_am_i,
+        Direction, Tools,
+    },
     runner::{backpack::BackPack, Robot, Runnable, Runner},
     utils::LibError,
     world::{
@@ -18,21 +21,30 @@ use robotics_lib::{
 };
 //use searchtool_unwrap::{SearchDirection, SearchTool};
 use sense_and_find_by_rustafariani::*;
-use std::{
-    borrow::{Borrow, BorrowMut},
-    collections::HashMap,
-    process::exit,
-};
+use std::{borrow::Borrow, cell::RefCell, collections::HashMap, process::exit, rc::Rc};
 
 pub struct MyRobot {
     pub robot: Robot,
     pub ticks: i32,
+    channel: Rc<RefCell<Channel>>,
+}
+impl MyRobot {
+    pub fn new(channel: Rc<RefCell<Channel>>) -> Self {
+        Self {
+            robot: Robot::new(),
+            ticks: 0,
+            channel,
+        }
+    }
 }
 
 impl Runnable for MyRobot {
     fn handle_event(&mut self, event: Event) {
         match event {
             Event::Terminated => {}
+            Event::TimeChanged(weather) => {
+                self.channel.borrow_mut().send_weather_info(weather);
+            }
             _ => {}
         }
     }
@@ -62,6 +74,7 @@ impl Runnable for MyRobot {
     }
 
     fn process_tick(&mut self, world: &mut robotics_lib::world::World) {
+        self.channel.borrow_mut().send_game_info(self, world);
         println!("tick {:?}", self.get_energy().get_energy_level());
         let variables: Variables = Variables::new(
             self.robot.energy.get_energy_level(),
@@ -71,9 +84,9 @@ impl Runnable for MyRobot {
             self.ticks,
         );
         robot_view(self, world);
-        let ComplexActions = variables.interpreter();
-        for ComplexAction in ComplexActions {
-            match ComplexAction {
+        let complex_actions = variables.interpreter();
+        for action in complex_actions {
+            match action {
                 ComplexAction::Discover => {
                     let mut lssf = Lssf::new();
                     let res: Result<Vec<Vec<((usize, usize), Tile, bool)>>, LibError> =
@@ -87,51 +100,88 @@ impl Runnable for MyRobot {
                     for row in x {
                         for col in row {
                             match col.1.content {
-                                Content::Tree(_) => { c = col.0; }
+                                Content::Tree(_) => {
+                                    c = col.0;
+                                }
                                 _ => {}
                             }
                         }
                     }
                     if c != (0, 0) {
                         if self.robot.coordinate.get_row() > c.0 {
-                            one_direction_view(self, world, Direction::Left, self.robot.coordinate.get_row() - c.0);
+                            one_direction_view(
+                                self,
+                                world,
+                                Direction::Left,
+                                self.robot.coordinate.get_row() - c.0,
+                            );
                         } else if self.robot.coordinate.get_row() < c.0 {
-                            one_direction_view(self, world, Direction::Right, c.0 - self.robot.coordinate.get_row());
-                        } 
-                        if self.robot.coordinate.get_col() > c.1 {
-                            one_direction_view(self, world, Direction::Down, self.robot.coordinate.get_col() - c.1);
-                        } else if self.robot.coordinate.get_col() < c.1 {
-                            one_direction_view(self, world, Direction::Down, c.1 - self.robot.coordinate.get_col());
+                            one_direction_view(
+                                self,
+                                world,
+                                Direction::Right,
+                                c.0 - self.robot.coordinate.get_row(),
+                            );
                         }
-                        
+                        if self.robot.coordinate.get_col() > c.1 {
+                            one_direction_view(
+                                self,
+                                world,
+                                Direction::Down,
+                                self.robot.coordinate.get_col() - c.1,
+                            );
+                        } else if self.robot.coordinate.get_col() < c.1 {
+                            one_direction_view(
+                                self,
+                                world,
+                                Direction::Down,
+                                c.1 - self.robot.coordinate.get_col(),
+                            );
+                        }
                     }
                     println!("prova smart");
                     let res = lssf.smart_sensing_centered(40, world, self, 2);
-                    if res.is_err() { println!("{:?}", res.err());}
+                    if res.is_err() {
+                        println!("{:?}", res.err());
+                    }
                     println!("prova update");
                     lssf.update_map(robot_map(world).unwrap().borrow());
                     let c = self.get_coordinate();
                     println!("{:?}", c);
-                    let res = lssf.update_cost_constrained(c.get_row(), c.get_col(), 100 , 500);
+                    let res = lssf.update_cost_constrained(c.get_row(), c.get_col(), 100, 500);
                     lssf.update_map(robot_map(world).unwrap().borrow());
                     println!("prova get content");
                     let c = lssf.get_content_vec(&Content::Tree(1));
-                    if c.is_empty() { println!("empty c"); }
+                    if c.is_empty() {
+                        println!("empty c");
+                    }
                     let n = (self.ticks % 3) as usize;
                     let (xc, yc) = c[n].clone();
                     println!("prova get action");
                     let res = lssf.get_action_vec(xc, yc);
                     println!("test ok");
                     if res.is_ok() {
-                        if res.clone().unwrap().is_empty() { println!("empty res");}
+                        if res.clone().unwrap().is_empty() {
+                            println!("empty res");
+                        }
                         for act in res.unwrap() {
                             robot_view(self, world);
                             match act {
-                                Action::North => { let _ = go(self, world, Direction::Up); }
-                                Action::South => { let _ = go(self, world, Direction::Down); }
-                                Action::West => { let _ = go(self, world, Direction::Left); }
-                                Action::East => { let _ = go(self, world, Direction::Right); }
-                                Action::Teleport(i, j) => { let _ = teleport(self, world, (i, j)); }
+                                Action::North => {
+                                    let _ = go(self, world, Direction::Up);
+                                }
+                                Action::South => {
+                                    let _ = go(self, world, Direction::Down);
+                                }
+                                Action::West => {
+                                    let _ = go(self, world, Direction::Left);
+                                }
+                                Action::East => {
+                                    let _ = go(self, world, Direction::Right);
+                                }
+                                Action::Teleport(i, j) => {
+                                    let _ = teleport(self, world, (i, j));
+                                }
                             }
                         }
                     }
@@ -141,7 +191,8 @@ impl Runnable for MyRobot {
                 ComplexAction::TryEnergyReplenish => {}
                 ComplexAction::Wait => {
                     let mut robot = Robot::new();
-                    self.robot.energy = robot.energy;}
+                    self.robot.energy = robot.energy;
+                }
             }
         }
         self.ticks += 1;
@@ -217,7 +268,7 @@ fn main() {
     let gui_runner = GuiRunner::new(Box::new(robot), &mut generator).unwrap();
 
     gui_runner.run().unwrap();
-} 
+}
 
 ComplexAction::Explore => {
     let mut list = ShoppingList::new(vec![(Content::Rock(1), Some(OpComplexActionInput::Destroy()))]);
@@ -235,7 +286,7 @@ ComplexAction::Explore => {
     else {
         println!("res is none");
     }
-} 
+}
 let content = match self.ticks % 12 {
                         0 => Content::Tree(0),
                         1 => Content::Rock(0),

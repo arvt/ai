@@ -1845,8 +1845,8 @@ dependencies = [
 
 [[package]]
 name = "olympus"
-version = "1.2.1"
-source = "git+https://github.com/Kalsifer-742/olympus.git#f09495f28c3bb3c52a721a231e2799291403a8fa"
+version = "2.0.0"
+source = "git+https://github.com/Kalsifer-742/olympus.git?tag=v2.0.0#20c8b4278eee7c6cadb76a882985b0e54dae1755"
 dependencies = [
  "macroquad",
  "robotics_lib",
@@ -2019,8 +2019,8 @@ dependencies = [
 
 [[package]]
 name = "ragnarok"
-version = "0.4.5"
-source = "git+https://github.com/circled-square/ragnarok.git#d818c3d3d9e22567687a60a1e94a1cda5af186bc"
+version = "0.4.8"
+source = "git+https://github.com/circled-square/ragnarok.git?tag=0.4.8#1fd02762846bbdfd8c8b3d7349d6929511141bf9"
 dependencies = [
  "glium",
  "glutin 0.31.3",

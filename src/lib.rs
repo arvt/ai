@@ -24,9 +24,9 @@ use std::{
     process::exit,
 };
 
-struct MyRobot {
-    robot: Robot,
-    ticks: i32,
+pub struct MyRobot {
+    pub robot: Robot,
+    pub ticks: i32,
 }
 
 impl Runnable for MyRobot {
@@ -206,6 +206,7 @@ impl Variables {
     }
 }
 
+/*
 fn main() {
     let mut generator = MyWorldGen::new();
     let mut robot = MyRobot {
@@ -216,8 +217,8 @@ fn main() {
     let gui_runner = GuiRunner::new(Box::new(robot), &mut generator).unwrap();
 
     gui_runner.run().unwrap();
-}
-/*
+} 
+
 ComplexAction::Explore => {
     let mut list = ShoppingList::new(vec![(Content::Rock(1), Some(OpComplexActionInput::Destroy()))]);
     let res = get_best_ComplexAction_to_element(self, world, &mut list);

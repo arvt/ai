@@ -115,9 +115,9 @@ checksum = "96d30a06541fbafbc7f82ed10c06164cfbd2c401138f6addd8404629c4b16711"
 
 [[package]]
 name = "asfalt_inator"
-version = "0.5.0"
+version = "0.5.1"
 source = "sparse+https://advancedprogramming.disi.unitn.it/api/v1/crates/"
-checksum = "5bb549758ea51ca2c0914bff744953d5b309838f7c43d94ba768b1567060a59b"
+checksum = "182c9440147efd022f4f14471aee67b9756dc45d23e59f302c104bc696a9aa7e"
 dependencies = [
  "lazy_static",
  "robotics_lib",
@@ -1846,7 +1846,7 @@ dependencies = [
 [[package]]
 name = "olympus"
 version = "2.0.0"
-source = "git+https://github.com/Kalsifer-742/olympus.git?tag=v2.0.0#6d0f403a5c0fadc9f0a08883ac4dd2829801df60"
+source = "git+https://github.com/Kalsifer-742/olympus.git?tag=v2.0.0#c2334e5ff349e96b84578a0a7da4c175e50babf4"
 dependencies = [
  "macroquad",
  "robotics_lib",
@@ -2019,8 +2019,8 @@ dependencies = [
 
 [[package]]
 name = "ragnarok"
-version = "0.4.8"
-source = "git+https://github.com/circled-square/ragnarok.git?tag=0.4.8#1fd02762846bbdfd8c8b3d7349d6929511141bf9"
+version = "0.4.12"
+source = "git+https://github.com/circled-square/ragnarok.git?tag=0.4.12#d0fcd59622e0b03bb9a9982d5b13c39fc0f22f3e"
 dependencies = [
  "glium",
  "glutin 0.31.3",

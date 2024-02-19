@@ -22,13 +22,13 @@ use robotics_lib::{
 //use searchtool_unwrap::{SearchDirection, SearchTool};
 use sense_and_find_by_rustafariani::*;
 use std::{
-    borrow::Borrow,
+    borrow::{Borrow, BorrowMut},
     cell::RefCell,
     clone,
     cmp::{max, min},
     collections::HashMap,
     process::exit,
-    rc::Rc,
+    rc::Rc, vec,
 };
 
 pub struct MyRobot {
@@ -42,7 +42,7 @@ impl Runnable for MyRobot {
         match event {
             Event::Terminated => {}
             Event::TimeChanged(weather) => {
-                self.channel.borrow_mut().send_weather_info(weather);
+                //self.channel.borrow_mut().send_weather_info(weather);
             }
             _ => {}
         }
@@ -73,7 +73,7 @@ impl Runnable for MyRobot {
     }
 
     fn process_tick(&mut self, world: &mut robotics_lib::world::World) {
-        self.channel.borrow_mut().send_game_info(self, world);
+        //self.channel.borrow_mut().send_game_info(self, world);
 
         println!("tick {:?}", self.get_energy().get_energy_level());
         let variables: Variables = Variables::new(
@@ -162,21 +162,37 @@ impl MyRobot {
         l: usize,
         granularity: usize,
     ) -> Vec<Direction> {
+        let robot_c = (self.robot.coordinate.get_row(), self.robot.coordinate.get_col());
+        let coords = check_coords(robot_c, world, l);
         let mut lssf = Lssf::new();
-        let map: Result<Vec<Vec<((usize, usize), Tile, bool)>>, LibError> =
-            lssf.sense_raw_centered_square(l, world, self, granularity);
+        let mut map: Vec<Vec<((usize, usize), Tile, bool)>> =
+            lssf.sense_raw_square_by_center(l, world, self, granularity, coords).unwrap();
+
+        let world_map = robot_map(world).unwrap();
+        
+        for row in map.iter_mut() {
+            for col in row {
+                match col {
+                    ((r,c), _, false) => {
+                        if world_map[*r][*c].is_some() {
+                            col.1.tile_type = world_map[*r][*c].as_ref().unwrap().tile_type;
+                            col.2 = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
         let mut matrix_likeability: Vec<Vec<(i32, Vec<Direction>)>> =
-            vec![vec![(0, vec![]); map.as_ref().unwrap().len()]; map.as_ref().unwrap().len()];
+            vec![vec![(0, vec![]); map.len()]; map.len()];
         let mut matrix_visited: Vec<Vec<bool>> =
-            vec![vec![false; map.as_ref().unwrap().len()]; map.as_ref().unwrap().len()];
-        let coords = (
-            (map.as_ref().unwrap().len() / 2),
-            (map.as_ref().unwrap().len() / 2),
-        );
+            vec![vec![false; map.len()]; map.len()];
+        let rel_robot_c_row = (robot_c.0 as i32 - coords.0 as i32 + 10) as usize;
+        let rel_robot_c_col = (robot_c.1 as i32 - coords.1 as i32 + 10) as usize;
         path_finder(
-            coords,
+            (rel_robot_c_row, rel_robot_c_col),
             None,
-            &map.unwrap(),
+            &map,
             &mut matrix_likeability,
             &mut matrix_visited,
             &mut vec![],
@@ -200,6 +216,22 @@ impl MyRobot {
         println!("{:?}", max);
         path
     }
+}
+pub fn check_coords(robot_c: (usize, usize), world: &mut World, l: usize) -> (usize, usize){
+    let mut robot_c = robot_c;
+    if robot_c.0 as i32 - l as i32 / 2 < 0 {
+        robot_c.0 = robot_c.0 + (robot_c.0 as i32 - l as i32 / 2).abs() as usize;
+    }
+    if robot_c.1 as i32 - l as i32 / 2 < 0 {
+        robot_c.1 = robot_c.1 + (robot_c.1 as i32 - l as i32 / 2).abs() as usize;
+    }
+    if robot_c.0 as i32 + l as i32 / 2 > 199 {
+        robot_c.0 = robot_c.0 - ((robot_c.0 + l / 2) - 199);
+    }
+    if robot_c.1 as i32 + l as i32 / 2 > 199 {
+        robot_c.1 = robot_c.1 - ((robot_c.1 + l / 2) - 199);
+    }
+    robot_c
 }
 pub fn path_finder(
     curr: (usize, usize),
@@ -271,16 +303,8 @@ pub fn path_finder(
                     environmental_conditions.clone(),
                     map[curr.0][curr.1].1.tile_type,
                 );
-                let mut elevation_cost = 0;
-                if map[curr.0][curr.1].1.elevation
-                    > map[prev.unwrap().0][prev.unwrap().1].1.elevation
-                {
-                    elevation_cost = (map[curr.0][curr.1].1.elevation
-                        - map[prev.unwrap().0][prev.unwrap().1].1.elevation)
-                        .pow(2);
-                }
                 let cost = cost + base_cost;
-                if cost < 200 {
+                if cost < 100 {
                     let mut u_tile = uncovered_tiles;
                     if map[curr.0][curr.1].2 == false {
                         u_tile += 10;

@@ -25,7 +25,7 @@ use std::{
 };
 
 fn main() {
-    let mut generator = MyWorldGen::new();
+    let mut generator = MyWorldGen::new_param(100, 1, 5, 5, false, false, 2, false, None);
     let channel = Rc::new(RefCell::new(Channel::default()));
     let mut robot = MyRobot::new(channel);
 

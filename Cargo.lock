@@ -2019,8 +2019,13 @@ dependencies = [
 
 [[package]]
 name = "ragnarok"
+<<<<<<< HEAD
 version = "0.4.12"
 source = "git+https://github.com/circled-square/ragnarok.git?tag=0.4.12#d0fcd59622e0b03bb9a9982d5b13c39fc0f22f3e"
+=======
+version = "0.4.10"
+source = "git+https://github.com/circled-square/ragnarok.git?tag=0.4.10#b3ef7050a5b7b16339e4ebc19a2b540494495efd"
+>>>>>>> bd7464d826c35cef5bbfb5ebe2db12d2988c8b11
 dependencies = [
  "glium",
  "glutin 0.31.3",

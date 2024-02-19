@@ -1,8 +1,6 @@
 use asfalt_inator::AsfaltInator;
 use cargo_commandos_lucky::lucky_function::lucky_spin;
 use olympus::channel::Channel;
-//use op_map::op_pathfinding::*;
-use rip_worldgenerator::MyWorldGen;
 use robotics_lib::{
     energy::Energy,
     event::events::Event,
@@ -22,7 +20,6 @@ use robotics_lib::{
 //use searchtool_unwrap::{SearchDirection, SearchTool};
 use sense_and_find_by_rustafariani::*;
 use std::{
-    borrow::{Borrow, BorrowMut},
     cell::RefCell,
     clone,
     cmp::{max, min},
@@ -42,7 +39,7 @@ impl Runnable for MyRobot {
         match event {
             Event::Terminated => {}
             Event::TimeChanged(weather) => {
-                //self.channel.borrow_mut().send_weather_info(weather);
+                self.channel.borrow_mut().send_weather_info(weather);
             }
             _ => {}
         }
@@ -73,7 +70,7 @@ impl Runnable for MyRobot {
     }
 
     fn process_tick(&mut self, world: &mut robotics_lib::world::World) {
-        //self.channel.borrow_mut().send_game_info(self, world);
+        self.channel.borrow_mut().send_game_info(self, world);
 
         println!("tick {:?}", self.get_energy().get_energy_level());
         let variables: Variables = Variables::new(
@@ -138,7 +135,7 @@ impl Runnable for MyRobot {
                 ComplexAction::GoToMarket => {}
                 ComplexAction::TryEnergyReplenish => {}
                 ComplexAction::Wait => {
-                    let mut robot = Robot::new();
+                    let robot = Robot::new();
                     self.robot.energy = robot.energy;
                 }
             }
@@ -409,7 +406,6 @@ impl Variables {
             city2: None,
         }
     }
-    fn update() {}
     fn interpreter(&self) -> Vec<ComplexAction> {
         let mut action: Vec<ComplexAction> = Vec::new();
         let mut flag = true;

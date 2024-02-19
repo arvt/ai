@@ -33,7 +33,6 @@ pub struct MyRobot {
 impl Runnable for MyRobot {
     fn handle_event(&mut self, event: Event) {
         match event {
-            Event::Terminated => {}
             Event::TimeChanged(weather) => {
                 self.channel.borrow_mut().send_weather_info(weather);
             }
@@ -67,6 +66,8 @@ impl Runnable for MyRobot {
 
     fn process_tick(&mut self, world: &mut robotics_lib::world::World) {
         self.channel.borrow_mut().send_game_info(self, world);
+
+        // Variables to base decisions on
         let variables: Variables = Variables::new(
             self.robot.energy.get_energy_level(),
             self.robot.backpack.get_contents().clone(),
@@ -75,19 +76,21 @@ impl Runnable for MyRobot {
             self.ticks,
         );
         robot_view(self, world);
+        // Decision process
         let complex_actions = variables.interpreter();
         for action in complex_actions {
             match action {
+                // Uses sense_raw_centered_square to discover some tiles in the world
                 ComplexAction::Discover => {
                     let mut lssf = Lssf::new();
                     let res: Result<Vec<Vec<((usize, usize), Tile, bool)>>, LibError> =
                         lssf.sense_raw_centered_square(41, world, self, 2);
                 }
                 ComplexAction::AsfaltInator => {}
+                // Using sense_and_find make decision on how to 
+                // explore the world based on partial info
                 ComplexAction::Explore => {
-                    let l = 21;
-                    let granularity = 4;
-                    let c = self.get_tile_to_move_towards(world, l, granularity);
+                    let c = self.get_tile_to_move_towards(world, 21, 4);
                     let mut flag = false;
                     let mut coords = (
                         self.robot.coordinate.get_row(),
@@ -115,8 +118,7 @@ impl Runnable for MyRobot {
                     }
                 }
                 ComplexAction::GetResources => {}
-                ComplexAction::GoToMarket => {}
-                ComplexAction::TryEnergyReplenish => {}
+                // Wait and try to replenish energy with lucky_spin
                 ComplexAction::Wait => {
                     let _ = lucky_spin(&mut self.robot);
                 }
@@ -134,6 +136,7 @@ impl MyRobot {
             channel,
         }
     }
+    // Function that decides where to go in Explore action
     pub fn get_tile_to_move_towards(
         &mut self,
         world: &mut World,
@@ -150,8 +153,8 @@ impl MyRobot {
             .sense_raw_square_by_center(l, world, self, granularity, coords)
             .unwrap();
 
+        // Create a map to make decisions on
         let world_map = robot_map(world).unwrap();
-
         for row in map.iter_mut() {
             for col in row {
                 match col {
@@ -197,6 +200,7 @@ impl MyRobot {
         path
     }
 }
+// Function to transform relative coordinates to global
 pub fn check_coords(robot_c: (usize, usize), l: usize) -> (usize, usize) {
     let mut robot_c = robot_c;
     if robot_c.0 as i32 - l as i32 / 2 < 0 {
@@ -213,6 +217,7 @@ pub fn check_coords(robot_c: (usize, usize), l: usize) -> (usize, usize) {
     }
     robot_c
 }
+// path_finder
 pub fn path_finder(
     curr: (usize, usize),
     prev: Option<(usize, usize)>,
@@ -357,9 +362,7 @@ pub enum ComplexAction {
     Discover,
     Explore,
     GetResources,
-    GoToMarket,
     AsfaltInator,
-    TryEnergyReplenish,
     Wait,
 }
 pub struct Variables {

@@ -7,8 +7,8 @@ use robotics_lib::{
     energy::Energy,
     event::events::Event,
     interface::{
-        go, look_at_sky, one_direction_view, put, robot_map, robot_view, teleport, where_am_i,
-        Direction, Tools,
+        discover_tiles, go, look_at_sky, one_direction_view, put, robot_map, robot_view, teleport,
+        where_am_i, Direction, Tools,
     },
     runner::{backpack::BackPack, Robot, Runnable, Runner},
     utils::{calculate_cost_go_with_environment, LibError},
@@ -24,6 +24,7 @@ use sense_and_find_by_rustafariani::*;
 use std::{
     borrow::Borrow,
     cell::RefCell,
+    clone,
     cmp::{max, min},
     collections::HashMap,
     process::exit,
@@ -89,20 +90,48 @@ impl Runnable for MyRobot {
                 ComplexAction::Discover => {
                     let mut lssf = Lssf::new();
                     let res: Result<Vec<Vec<((usize, usize), Tile, bool)>>, LibError> =
-                        lssf.sense_raw_centered_square(40, world, self, 2);
+                        lssf.sense_raw_centered_square(41, world, self, 2);
                     if res.is_err() {
                         println!("{:?}", res.err())
                     }
                 }
                 ComplexAction::AsfaltInator => {}
                 ComplexAction::Explore => {
-                    let l = 20;
+                    let l = 21;
                     let granularity = 4;
                     let c = self.get_tile_to_move_towards(world, l, granularity);
-                    for dir in c {
-                        let res = go(self, world, dir);
-                        if res.is_err() { println!("{:?}", res.err())}
-                        robot_view(self, world);
+                    let mut flag = false;
+                    let mut coords = (
+                        self.robot.coordinate.get_row(),
+                        self.robot.coordinate.get_col(),
+                    );
+                    for dir in c.iter() {
+                        print!("{:?} ", dir);
+                        match dir {
+                            Direction::Up => coords = (coords.0 - 1, coords.1),
+                            Direction::Right => coords = (coords.0, coords.1 + 1),
+                            Direction::Down => coords = (coords.0 + 1, coords.1),
+                            Direction::Left => coords = (coords.0, coords.1 - 1),
+                        }
+                        if flag {
+                            let res = discover_tiles(self, world, &[(coords.0, coords.1)]);
+                            if res.is_err() {
+                                println!("{:?}", res.err());
+                            }
+                        } else {
+                            let res = go(self, world, dir.clone());
+                            if res.is_err() {
+                                flag = true;
+                                println!("{:?}", res.err());
+                            }
+                            let view = robot_view(self, world);
+                            for row in view {
+                                for col in row {
+                                    print!("{:?}", col);
+                                }
+                                println!();
+                            }
+                        }
                     }
                 }
                 ComplexAction::GetResources => {}
@@ -127,16 +156,22 @@ impl MyRobot {
             channel,
         }
     }
-    pub fn get_tile_to_move_towards(&mut self, world: &mut World, l: usize, granularity: usize) -> Vec<Direction> {
+    pub fn get_tile_to_move_towards(
+        &mut self,
+        world: &mut World,
+        l: usize,
+        granularity: usize,
+    ) -> Vec<Direction> {
         let mut lssf = Lssf::new();
         let map: Result<Vec<Vec<((usize, usize), Tile, bool)>>, LibError> =
             lssf.sense_raw_centered_square(l, world, self, granularity);
-        let mut matrix_likeability: Vec<Vec<(i32, Vec<Direction>)>> = vec![vec![(0, vec![]);map.as_ref().unwrap().len()];map.as_ref().unwrap().len()];
-        let mut matrix_visited: Vec<Vec<bool>> = vec![vec![false;map.as_ref().unwrap().len()];map.as_ref().unwrap().len()];
-        matrix_visited[(map.as_ref().unwrap().len()-1) /2][(map.as_ref().unwrap().len()-1) /2] = true;
+        let mut matrix_likeability: Vec<Vec<(i32, Vec<Direction>)>> =
+            vec![vec![(0, vec![]); map.as_ref().unwrap().len()]; map.as_ref().unwrap().len()];
+        let mut matrix_visited: Vec<Vec<bool>> =
+            vec![vec![false; map.as_ref().unwrap().len()]; map.as_ref().unwrap().len()];
         let coords = (
-            (map.as_ref().unwrap().len() - 1) / 2,
-            (map.as_ref().unwrap().len() - 1) / 2,
+            (map.as_ref().unwrap().len() / 2),
+            (map.as_ref().unwrap().len() / 2),
         );
         path_finder(
             coords,
@@ -149,11 +184,12 @@ impl MyRobot {
             look_at_sky(world),
             1,
         );
+        //matrix_likeability[coords.0][coords.1] = (0, matrix_likeability[coords.0][coords.1].1.clone());
         let mut path: Vec<Direction> = vec![];
         let mut max: i32 = 0;
         for row in matrix_likeability {
             for col in row {
-                if col.0 > max { 
+                if col.0 > max {
                     path = col.1.clone();
                     max = col.0;
                 }
@@ -176,76 +212,115 @@ pub fn path_finder(
     environmental_conditions: EnvironmentalConditions,
     uncovered_tiles: usize,
 ) {
+    matrix_visited[curr.0][curr.1] = true;
     let dirs = vec![
         Direction::Up,
         Direction::Right,
         Direction::Down,
         Direction::Left,
     ];
-    for dir in dirs {
-        let mut base_cost;
-        let next: Option<(usize, usize)> = match dir {
-            Direction::Up => {
-                if curr.1 as i32 - 1 < 0 || matrix_visited[curr.0][curr.1 - 1]{
-                    None
-                } else {
-                    Some((curr.0, curr.1 - 1))
+    if map[curr.0][curr.1].1.tile_type.properties().walk() {
+        for dir in dirs {
+            let mut base_cost;
+            let next: Option<(usize, usize)> = match dir {
+                Direction::Up => {
+                    if curr.0 as i32 - 1 < 0
+                        || matrix_visited[curr.0 - 1][curr.1]
+                        || !map[curr.0 - 1][curr.1].1.tile_type.properties().walk()
+                    {
+                        None
+                    } else {
+                        Some((curr.0 - 1, curr.1))
+                    }
                 }
-            }
-            Direction::Right => {
-                if curr.0 + 1 > map.len() - 1 || matrix_visited[curr.0 + 1][curr.1]{
-                    None
-                } else {
-                    Some((curr.0 + 1, curr.1))
+                Direction::Right => {
+                    if curr.1 + 1 > map.len() - 1
+                        || matrix_visited[curr.0][curr.1 + 1]
+                        || !map[curr.0][curr.1 + 1].1.tile_type.properties().walk()
+                    {
+                        None
+                    } else {
+                        Some((curr.0, curr.1 + 1))
+                    }
                 }
-            }
-            Direction::Down => {
-                if curr.1 + 1 > map.len() - 1 || matrix_visited[curr.0][curr.1 + 1]{
-                    None
-                } else {
-                    Some((curr.0, curr.1 + 1))
+                Direction::Down => {
+                    if curr.0 + 1 > map.len() - 1
+                        || matrix_visited[curr.0 + 1][curr.1]
+                        || !map[curr.0 + 1][curr.1].1.tile_type.properties().walk()
+                    {
+                        None
+                    } else {
+                        Some((curr.0 + 1, curr.1))
+                    }
                 }
-            }
-            Direction::Left => {
-                if curr.0 as i32 - 1 < 0 || matrix_visited[curr.0 - 1][curr.1]{
-                    None
-                } else {
-                    Some((curr.0 - 1, curr.1))
+                Direction::Left => {
+                    if curr.1 as i32 - 1 < 0
+                        || matrix_visited[curr.0][curr.1 - 1]
+                        || !map[curr.0][curr.1 - 1].1.tile_type.properties().walk()
+                    {
+                        None
+                    } else {
+                        Some((curr.0, curr.1 - 1))
+                    }
                 }
-            }
-        };
-        if prev.is_some() {
-            base_cost = map[curr.0][curr.1].1.tile_type.properties().cost();
-            base_cost = calculate_cost_go_with_environment(
-                base_cost,
-                environmental_conditions.clone(),
-                map[curr.0][curr.1].1.tile_type,
-            );
-            let mut elevation_cost = 0;
-            if map[curr.0][curr.1].1.elevation > map[prev.unwrap().0][prev.unwrap().1].1.elevation {
-                elevation_cost = (map[curr.0][curr.1].1.elevation
-                    - map[prev.unwrap().0][prev.unwrap().1].1.elevation)
-                    .pow(2);
-            }
-            let cost = cost + base_cost + elevation_cost;
-            if cost < 100 {
-                let mut uncovered_tiles = uncovered_tiles;
-                if map[curr.0][curr.1].2 == false {
-                    uncovered_tiles += 1
+            };
+            if prev.is_some() {
+                base_cost = map[curr.0][curr.1].1.tile_type.properties().cost();
+                base_cost = calculate_cost_go_with_environment(
+                    base_cost,
+                    environmental_conditions.clone(),
+                    map[curr.0][curr.1].1.tile_type,
+                );
+                let mut elevation_cost = 0;
+                if map[curr.0][curr.1].1.elevation
+                    > map[prev.unwrap().0][prev.unwrap().1].1.elevation
+                {
+                    elevation_cost = (map[curr.0][curr.1].1.elevation
+                        - map[prev.unwrap().0][prev.unwrap().1].1.elevation)
+                        .pow(2);
                 }
-                let mut distance_row = curr.0 as i32 - (map.len() as i32 - 1) / 2;
-                if distance_row < 0 {
-                    distance_row = distance_row * -1
+                let cost = cost + base_cost;
+                if cost < 200 {
+                    let mut u_tile = uncovered_tiles;
+                    if map[curr.0][curr.1].2 == false {
+                        u_tile += 10;
+                    }
+                    let mut distance_row = curr.0 as i32 - (map.len() as i32 / 2);
+                    if distance_row < 0 {
+                        distance_row = distance_row * -1
+                    }
+                    let mut distance_col = curr.1 as i32 - (map.len() as i32 / 2);
+                    if distance_col < 0 {
+                        distance_col = distance_col * -1
+                    }
+                    let distance = distance_row + distance_col;
+                    let likeability = u_tile as i32 * distance;
+                    if likeability >= matrix_likeability[curr.0][curr.1].0 {
+                        matrix_likeability[curr.0][curr.1] = (likeability, path.clone());
+                        if next.is_some()
+                            && map[next.unwrap().0][next.unwrap().1]
+                                .1
+                                .tile_type
+                                .properties()
+                                .walk()
+                        {
+                            path.push(dir);
+                            path_finder(
+                                next.unwrap(),
+                                Some(curr),
+                                map,
+                                matrix_likeability,
+                                matrix_visited,
+                                path,
+                                cost + 5,
+                                environmental_conditions.clone(),
+                                u_tile,
+                            );
+                            path.pop();
+                        }
+                    }
                 }
-                let mut distance_col = curr.1 as i32 - (map.len() as i32 - 1) / 2;
-                if distance_col < 0 {
-                    distance_col = distance_col * -1
-                }
-                let distance = distance_row + distance_col;
-                let likeability = uncovered_tiles as i32 * distance;
-                if likeability > matrix_likeability[curr.0][curr.1].0 {
-                    matrix_likeability[curr.0][curr.1] = (likeability, path.clone());
-                }
+            } else {
                 if next.is_some()
                     && map[next.unwrap().0][next.unwrap().1]
                         .1
@@ -253,7 +328,6 @@ pub fn path_finder(
                         .properties()
                         .walk()
                 {
-                    matrix_visited[next.unwrap().0][next.unwrap().1] = true;
                     path.push(dir);
                     path_finder(
                         next.unwrap(),
@@ -267,35 +341,11 @@ pub fn path_finder(
                         uncovered_tiles,
                     );
                     path.pop();
-                    matrix_visited[next.unwrap().0][next.unwrap().1] = false;
                 }
-            }
-        } else {
-            if next.is_some()
-                && map[next.unwrap().0][next.unwrap().1]
-                    .1
-                    .tile_type
-                    .properties()
-                    .walk()
-            {
-                matrix_visited[next.unwrap().0][next.unwrap().1] = true;
-                path.push(dir);
-                path_finder(
-                    next.unwrap(),
-                    Some(curr),
-                    map,
-                    matrix_likeability,
-                    matrix_visited,
-                    path,
-                    cost + 5,
-                    environmental_conditions.clone(),
-                    uncovered_tiles,
-                );
-                path.pop();
-                matrix_visited[next.unwrap().0][next.unwrap().1] = false;
             }
         }
     }
+    matrix_visited[curr.0][curr.1] = false;
 }
 
 pub enum ComplexAction {

@@ -5,9 +5,9 @@ use robotics_lib::{
     energy::Energy,
     event::events::Event,
     interface::{
-        destroy, discover_tiles, go, look_at_sky, one_direction_view, put, robot_map, robot_view, teleport, where_am_i, Direction, Tools
+        destroy, discover_tiles, go, look_at_sky, robot_map, robot_view, Direction,
     },
-    runner::{backpack::BackPack, Robot, Runnable, Runner},
+    runner::{backpack::BackPack, Robot, Runnable},
     utils::{calculate_cost_go_with_environment, LibError},
     world::{
         coordinates::Coordinate,
@@ -67,8 +67,6 @@ impl Runnable for MyRobot {
 
     fn process_tick(&mut self, world: &mut robotics_lib::world::World) {
         self.channel.borrow_mut().send_game_info(self, world);
-
-        println!("tick {:?}", self.get_energy().get_energy_level());
         let variables: Variables = Variables::new(
             self.robot.energy.get_energy_level(),
             self.robot.backpack.get_contents().clone(),
@@ -84,9 +82,6 @@ impl Runnable for MyRobot {
                     let mut lssf = Lssf::new();
                     let res: Result<Vec<Vec<((usize, usize), Tile, bool)>>, LibError> =
                         lssf.sense_raw_centered_square(41, world, self, 2);
-                    if res.is_err() {
-                        println!("{:?}", res.err())
-                    }
                 }
                 ComplexAction::AsfaltInator => {}
                 ComplexAction::Explore => {
@@ -107,18 +102,14 @@ impl Runnable for MyRobot {
                         }
                         if flag {
                             let res = discover_tiles(self, world, &[(coords.0, coords.1)]);
-                            if res.is_err() {
-                                println!("{:?}", res.err());
-                            }
                         } else {
                             let res = go(self, world, dir.clone());
                             if res.is_err() {
                                 flag = true;
-                                println!("{:?}", res.err());
                             }
                             robot_view(self, world);
                             for d in vec![Direction::Up, Direction::Right, Direction::Down, Direction::Left] {
-                                let r = destroy(self, world, d);
+                                let _ = destroy(self, world, d);
                             }
                         }
                     }
@@ -127,12 +118,11 @@ impl Runnable for MyRobot {
                 ComplexAction::GoToMarket => {}
                 ComplexAction::TryEnergyReplenish => {}
                 ComplexAction::Wait => {
-                    lucky_spin(&mut self.robot);
+                    let _ = lucky_spin(&mut self.robot);
                 }
             }
         }
         self.ticks += 1;
-        println!("energy: {:?}", self.get_energy().get_energy_level());
     }
 }
 
@@ -154,7 +144,7 @@ impl MyRobot {
             self.robot.coordinate.get_row(),
             self.robot.coordinate.get_col(),
         );
-        let coords = check_coords(robot_c, world, l);
+        let coords = check_coords(robot_c, l);
         let mut lssf = Lssf::new();
         let mut map: Vec<Vec<((usize, usize), Tile, bool)>> = lssf
             .sense_raw_square_by_center(l, world, self, granularity, coords)
@@ -207,7 +197,7 @@ impl MyRobot {
         path
     }
 }
-pub fn check_coords(robot_c: (usize, usize), world: &mut World, l: usize) -> (usize, usize) {
+pub fn check_coords(robot_c: (usize, usize), l: usize) -> (usize, usize) {
     let mut robot_c = robot_c;
     if robot_c.0 as i32 - l as i32 / 2 < 0 {
         robot_c.0 = robot_c.0 + (robot_c.0 as i32 - l as i32 / 2).abs() as usize;

@@ -18,7 +18,6 @@ use robotics_lib::{
 };
 use sense_and_find_by_rustafariani::*;
 use std::{
-    borrow::BorrowMut,
     cell::RefCell,
     collections::HashMap,
     rc::Rc,
@@ -67,6 +66,8 @@ impl Runnable for MyRobot {
     }
 
     fn process_tick(&mut self, world: &mut robotics_lib::world::World) {
+        self.channel.borrow_mut().send_game_info(self, world);
+
         println!("tick {:?}", self.get_energy().get_energy_level());
         let variables: Variables = Variables::new(
             self.robot.energy.get_energy_level(),
@@ -399,7 +400,6 @@ impl Variables {
             city2: None,
         }
     }
-    fn update() {}
     fn interpreter(&self) -> Vec<ComplexAction> {
         let mut action: Vec<ComplexAction> = Vec::new();
         let mut flag = true;

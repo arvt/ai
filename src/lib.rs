@@ -11,17 +11,24 @@ use robotics_lib::{
         Direction, Tools,
     },
     runner::{backpack::BackPack, Robot, Runnable, Runner},
-    utils::LibError,
+    utils::{calculate_cost_go_with_environment, LibError},
     world::{
         coordinates::Coordinate,
-        environmental_conditions::{EnvironmentalConditions, WeatherType},
+        environmental_conditions::{self, EnvironmentalConditions, WeatherType},
         tile::{Content, Tile, TileType},
         World,
     },
 };
 //use searchtool_unwrap::{SearchDirection, SearchTool};
 use sense_and_find_by_rustafariani::*;
-use std::{borrow::Borrow, cell::RefCell, cmp::{max, min}, collections::HashMap, process::exit, rc::Rc};
+use std::{
+    borrow::Borrow,
+    cell::RefCell,
+    cmp::{max, min},
+    collections::HashMap,
+    process::exit,
+    rc::Rc,
+};
 
 pub struct MyRobot {
     pub robot: Robot,
@@ -80,22 +87,22 @@ impl Runnable for MyRobot {
         for action in complex_actions {
             match action {
                 ComplexAction::Discover => {
-                    println!("disco");
                     let mut lssf = Lssf::new();
                     let res: Result<Vec<Vec<((usize, usize), Tile, bool)>>, LibError> =
                         lssf.sense_raw_centered_square(40, world, self, 2);
-                    if res.is_err() { println!("{:?}", res.err())}
+                    if res.is_err() {
+                        println!("{:?}", res.err())
+                    }
                 }
                 ComplexAction::AsfaltInator => {}
                 ComplexAction::Explore => {
                     let l = 20;
-                    let granularity = 2;
-                    let c = self.get_direction_to_move_towards(world, l, 4);
-                    for _ in 0..c.1 {
-                        let res = go(self, world, c.clone().0);
-                        if res.is_err() {
-
-                        }
+                    let granularity = 4;
+                    let c = self.get_tile_to_move_towards(world, l, granularity);
+                    for dir in c {
+                        let res = go(self, world, dir);
+                        if res.is_err() { println!("{:?}", res.err())}
+                        robot_view(self, world);
                     }
                 }
                 ComplexAction::GetResources => {}
@@ -120,53 +127,175 @@ impl MyRobot {
             channel,
         }
     }
-    pub fn get_direction_to_move_towards(&mut self, world: &mut World, l: usize, granularity: usize) -> (Direction, usize) {
+    pub fn get_tile_to_move_towards(&mut self, world: &mut World, l: usize, granularity: usize) -> Vec<Direction> {
         let mut lssf = Lssf::new();
-        let robot_coord = (self.robot.coordinate.get_row(), self.robot.coordinate.get_col());
-        let top_left = (max(robot_coord.0 as i32 - 20, 0) as usize, max(robot_coord.1 as i32 - 20, 0) as usize);
-        let top_right = (max(robot_coord.0, 0), max(robot_coord.1 as i32 - 20, 0) as usize);
-        let bottom_right = (max(robot_coord.0 , 0), max(robot_coord.1, 0));
-        let bottom_left = (max(robot_coord.0 as i32 - 20, 0) as usize, max(robot_coord.1, 0));
-        let map_top_left = lssf.sense_raw_square_by_corner(l, world, self, granularity, top_left).unwrap();
-        let map_top_right = lssf.sense_raw_square_by_corner(l, world, self, granularity, top_right).unwrap();
-        let map_bottom_right = lssf.sense_raw_square_by_corner(l, world, self, granularity, bottom_right).unwrap();
-        let map_bottom_left = lssf.sense_raw_square_by_corner(l, world, self, granularity, bottom_left).unwrap();
-        let likeability_top_left = calculate_likeability(map_top_left);
-        let likeability_top_right = calculate_likeability(map_top_right);
-        let likeability_bottom_right = calculate_likeability(map_bottom_right);
-        let likeability_bottom_left = calculate_likeability(map_bottom_left);
-        let likeability_top = likeability_top_left + likeability_top_right;
-        let likeability_right = likeability_top_right + likeability_bottom_right;
-        let likeability_bottom = likeability_bottom_right + likeability_bottom_left;
-        let likeability_left = likeability_bottom_left + likeability_top_left;
-        let mut max = likeability_top;
-        for like in vec![likeability_top, likeability_right, likeability_bottom, likeability_left] {
-            if like > max { max = like}
+        let map: Result<Vec<Vec<((usize, usize), Tile, bool)>>, LibError> =
+            lssf.sense_raw_centered_square(l, world, self, granularity);
+        let mut matrix_likeability: Vec<Vec<(i32, Vec<Direction>)>> = vec![vec![(0, vec![]);map.as_ref().unwrap().len()];map.as_ref().unwrap().len()];
+        let mut matrix_visited: Vec<Vec<bool>> = vec![vec![false;map.as_ref().unwrap().len()];map.as_ref().unwrap().len()];
+        matrix_visited[(map.as_ref().unwrap().len()-1) /2][(map.as_ref().unwrap().len()-1) /2] = true;
+        let coords = (
+            (map.as_ref().unwrap().len() - 1) / 2,
+            (map.as_ref().unwrap().len() - 1) / 2,
+        );
+        path_finder(
+            coords,
+            None,
+            &map.unwrap(),
+            &mut matrix_likeability,
+            &mut matrix_visited,
+            &mut vec![],
+            0,
+            look_at_sky(world),
+            1,
+        );
+        let mut path: Vec<Direction> = vec![];
+        let mut max: i32 = 0;
+        for row in matrix_likeability {
+            for col in row {
+                if col.0 > max { 
+                    path = col.1.clone();
+                    max = col.0;
+                }
+                print!("{:?} ", col.0);
+            }
+            println!();
         }
-        match max {
-            likeability_top => ( Direction::Up, robot_coord.1 - top_right.1 ),
-            likeability_right => ( Direction::Right,  top_right.0 - robot_coord.0),
-            likeability_bottom => ( Direction::Down,  bottom_left.1 - robot_coord.1),
-            likeability_left => ( Direction::Left, robot_coord.0 - bottom_left.0 ),
-        }
+        println!("{:?}", max);
+        path
     }
 }
-
-pub fn calculate_likeability(map: Vec<Vec<((usize, usize), Tile, bool)>>) -> i32 {
-    let mut likeability: i32 = 0;
-    for row in map.clone() {
-        for col in row {
-            match col.2 {
-                false => likeability += 1,
-                _ => {}
+pub fn path_finder(
+    curr: (usize, usize),
+    prev: Option<(usize, usize)>,
+    map: &Vec<Vec<((usize, usize), Tile, bool)>>,
+    matrix_likeability: &mut Vec<Vec<(i32, Vec<Direction>)>>,
+    matrix_visited: &mut Vec<Vec<bool>>,
+    path: &mut Vec<Direction>,
+    cost: usize,
+    environmental_conditions: EnvironmentalConditions,
+    uncovered_tiles: usize,
+) {
+    let dirs = vec![
+        Direction::Up,
+        Direction::Right,
+        Direction::Down,
+        Direction::Left,
+    ];
+    for dir in dirs {
+        let mut base_cost;
+        let next: Option<(usize, usize)> = match dir {
+            Direction::Up => {
+                if curr.1 as i32 - 1 < 0 || matrix_visited[curr.0][curr.1 - 1]{
+                    None
+                } else {
+                    Some((curr.0, curr.1 - 1))
+                }
             }
-            match col.1.tile_type {
-                TileType::DeepWater => likeability -= 10,
-                _ => {}
+            Direction::Right => {
+                if curr.0 + 1 > map.len() - 1 || matrix_visited[curr.0 + 1][curr.1]{
+                    None
+                } else {
+                    Some((curr.0 + 1, curr.1))
+                }
+            }
+            Direction::Down => {
+                if curr.1 + 1 > map.len() - 1 || matrix_visited[curr.0][curr.1 + 1]{
+                    None
+                } else {
+                    Some((curr.0, curr.1 + 1))
+                }
+            }
+            Direction::Left => {
+                if curr.0 as i32 - 1 < 0 || matrix_visited[curr.0 - 1][curr.1]{
+                    None
+                } else {
+                    Some((curr.0 - 1, curr.1))
+                }
+            }
+        };
+        if prev.is_some() {
+            base_cost = map[curr.0][curr.1].1.tile_type.properties().cost();
+            base_cost = calculate_cost_go_with_environment(
+                base_cost,
+                environmental_conditions.clone(),
+                map[curr.0][curr.1].1.tile_type,
+            );
+            let mut elevation_cost = 0;
+            if map[curr.0][curr.1].1.elevation > map[prev.unwrap().0][prev.unwrap().1].1.elevation {
+                elevation_cost = (map[curr.0][curr.1].1.elevation
+                    - map[prev.unwrap().0][prev.unwrap().1].1.elevation)
+                    .pow(2);
+            }
+            let cost = cost + base_cost + elevation_cost;
+            if cost < 100 {
+                let mut uncovered_tiles = uncovered_tiles;
+                if map[curr.0][curr.1].2 == false {
+                    uncovered_tiles += 1
+                }
+                let mut distance_row = curr.0 as i32 - (map.len() as i32 - 1) / 2;
+                if distance_row < 0 {
+                    distance_row = distance_row * -1
+                }
+                let mut distance_col = curr.1 as i32 - (map.len() as i32 - 1) / 2;
+                if distance_col < 0 {
+                    distance_col = distance_col * -1
+                }
+                let distance = distance_row + distance_col;
+                let likeability = uncovered_tiles as i32 * distance;
+                if likeability > matrix_likeability[curr.0][curr.1].0 {
+                    matrix_likeability[curr.0][curr.1] = (likeability, path.clone());
+                }
+                if next.is_some()
+                    && map[next.unwrap().0][next.unwrap().1]
+                        .1
+                        .tile_type
+                        .properties()
+                        .walk()
+                {
+                    matrix_visited[next.unwrap().0][next.unwrap().1] = true;
+                    path.push(dir);
+                    path_finder(
+                        next.unwrap(),
+                        Some(curr),
+                        map,
+                        matrix_likeability,
+                        matrix_visited,
+                        path,
+                        cost + 5,
+                        environmental_conditions.clone(),
+                        uncovered_tiles,
+                    );
+                    path.pop();
+                    matrix_visited[next.unwrap().0][next.unwrap().1] = false;
+                }
+            }
+        } else {
+            if next.is_some()
+                && map[next.unwrap().0][next.unwrap().1]
+                    .1
+                    .tile_type
+                    .properties()
+                    .walk()
+            {
+                matrix_visited[next.unwrap().0][next.unwrap().1] = true;
+                path.push(dir);
+                path_finder(
+                    next.unwrap(),
+                    Some(curr),
+                    map,
+                    matrix_likeability,
+                    matrix_visited,
+                    path,
+                    cost + 5,
+                    environmental_conditions.clone(),
+                    uncovered_tiles,
+                );
+                path.pop();
+                matrix_visited[next.unwrap().0][next.unwrap().1] = false;
             }
         }
     }
-    likeability * 100 / (map.len() * map.len()) as i32
 }
 
 pub enum ComplexAction {

@@ -192,11 +192,11 @@ impl MyRobot {
                     path = col.1.clone();
                     max = col.0;
                 }
-                print!("{:?} ", col.0);
+                //print!("{:?} ", col.0);
             }
-            println!();
+            //println!();
         }
-        println!("{:?}", max);
+        //println!("{:?}", max);
         path
     }
 }

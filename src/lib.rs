@@ -1,7 +1,6 @@
 use asfalt_inator::AsfaltInator;
 use cargo_commandos_lucky::lucky_function::lucky_spin;
 use olympus::channel::Channel;
-//use op_map::op_pathfinding::*;
 use robotics_lib::{
     energy::Energy,
     event::events::Event,
@@ -12,20 +11,16 @@ use robotics_lib::{
     utils::{calculate_cost_go_with_environment, LibError},
     world::{
         coordinates::Coordinate,
-        environmental_conditions::{self, EnvironmentalConditions, WeatherType},
-        tile::{Content, Tile, TileType},
+        environmental_conditions::EnvironmentalConditions,
+        tile::{Content, Tile},
         World,
     },
 };
-//use searchtool_unwrap::{SearchDirection, SearchTool};
 use sense_and_find_by_rustafariani::*;
 use std::{
-    borrow::{Borrow, BorrowMut},
+    borrow::BorrowMut,
     cell::RefCell,
-    clone,
-    cmp::{max, min},
     collections::HashMap,
-    process::exit,
     rc::Rc,
     vec,
 };
@@ -41,7 +36,7 @@ impl Runnable for MyRobot {
         match event {
             Event::Terminated => {}
             Event::TimeChanged(weather) => {
-                //self.channel.borrow_mut().send_weather_info(weather);
+                self.channel.borrow_mut().send_weather_info(weather);
             }
             _ => {}
         }
@@ -72,8 +67,6 @@ impl Runnable for MyRobot {
     }
 
     fn process_tick(&mut self, world: &mut robotics_lib::world::World) {
-        //self.channel.borrow_mut().send_game_info(self, world);
-
         println!("tick {:?}", self.get_energy().get_energy_level());
         let variables: Variables = Variables::new(
             self.robot.energy.get_energy_level(),
@@ -125,7 +118,6 @@ impl Runnable for MyRobot {
                             robot_view(self, world);
                             for d in vec![Direction::Up, Direction::Right, Direction::Down, Direction::Left] {
                                 let r = destroy(self, world, d);
-                                println!("{r:?}");
                             }
                         }
                     }
@@ -134,8 +126,7 @@ impl Runnable for MyRobot {
                 ComplexAction::GoToMarket => {}
                 ComplexAction::TryEnergyReplenish => {}
                 ComplexAction::Wait => {
-                    let mut robot = Robot::new();
-                    self.robot.energy = robot.energy;
+                    lucky_spin(&mut self.robot);
                 }
             }
         }
@@ -223,11 +214,11 @@ pub fn check_coords(robot_c: (usize, usize), world: &mut World, l: usize) -> (us
     if robot_c.1 as i32 - l as i32 / 2 < 0 {
         robot_c.1 = robot_c.1 + (robot_c.1 as i32 - l as i32 / 2).abs() as usize;
     }
-    if robot_c.0 as i32 + l as i32 / 2 > 99 {
-        robot_c.0 = robot_c.0 - ((robot_c.0 + l / 2) - 99);
+    if robot_c.0 as i32 + l as i32 / 2 > 199 {
+        robot_c.0 = robot_c.0 - ((robot_c.0 + l / 2) - 199);
     }
-    if robot_c.1 as i32 + l as i32 / 2 > 99 {
-        robot_c.1 = robot_c.1 - ((robot_c.1 + l / 2) - 99);
+    if robot_c.1 as i32 + l as i32 / 2 > 199 {
+        robot_c.1 = robot_c.1 - ((robot_c.1 + l / 2) - 199);
     }
     robot_c
 }
@@ -417,69 +408,15 @@ impl Variables {
             if self.ticks == 0 && cycles == 0 {
                 action.push(ComplexAction::Discover);
                 flag = false;
-                println!("Discover");
             } else if self.energy_lv < 200 {
                 action.push(ComplexAction::Wait);
                 flag = false;
-                println!("Wait");
             } else {
                 action.push(ComplexAction::Explore);
                 flag = false;
-                println!("Explore");
             }
             cycles += 1;
         }
         action
     }
 }
-
-/*
-pub fn prova() {
-    println!("prova smart");
-    let res = lssf.smart_sensing_centered(40, world, self, 2);
-    if res.is_err() {
-        println!("{:?}", res.err());
-    }
-    println!("prova update");
-    lssf.update_map(robot_map(world).unwrap().borrow());
-    let c = self.get_coordinate();
-    println!("{:?}", c);
-    let res = lssf.update_cost_constrained(c.get_row(), c.get_col(), 100, 500);
-    lssf.update_map(robot_map(world).unwrap().borrow());
-    println!("prova get content");
-    let c = lssf.get_content_vec(&Content::Tree(1));
-    if c.is_empty() {
-        println!("empty c");
-    }
-    let n = (self.ticks % 3) as usize;
-    let (xc, yc) = c[n].clone();
-    println!("prova get action");
-    let res = lssf.get_action_vec(xc, yc);
-    println!("test ok");
-    if res.is_ok() {
-        if res.clone().unwrap().is_empty() {
-            println!("empty res");
-        }
-        for act in res.unwrap() {
-            robot_view(self, world);
-            match act {
-                Action::North => {
-                    let _ = go(self, world, Direction::Up);
-                }
-                Action::South => {
-                    let _ = go(self, world, Direction::Down);
-                }
-                Action::West => {
-                    let _ = go(self, world, Direction::Left);
-                }
-                Action::East => {
-                    let _ = go(self, world, Direction::Right);
-                }
-                Action::Teleport(i, j) => {
-                    let _ = teleport(self, world, (i, j));
-                }
-            }
-        }
-    }
-}
-*/
